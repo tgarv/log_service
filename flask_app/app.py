@@ -6,7 +6,7 @@ import json
 def create_app(settings_key='dev'):
     app = Flask(__name__)
     app.debug = True
-    app.logs = IntervalTree()
+    app.logs = {}
     # app.config.from_object('config')
 
     @app.route('/')
@@ -20,25 +20,25 @@ def create_app(settings_key='dev'):
             return 'Malformed request', 400
         request_start = request_json.get('start')
         request_end = request_json.get('end')
-        request_json['app_id'] = app_id
-        app.logs.addi(request_start, request_end, request_json)
+        if app_id not in app.logs:
+            app.logs[app_id] = IntervalTree()
+        app.logs[app_id].addi(request_start, request_end, request_json)
         return 'Hello, ' + str(app_id)
 
     @app.route('/<app_id>', methods=['GET'])
     def get_logs(app_id):
         if not request.args:
             return 'Malformed request', 400
-        request_start = request.args.get('start')
-        request_end = request.args.get('end')
-        logs_in_range = app.logs.search(int(request_start), int(request_end))
+        logs_for_app = app.logs.get(app_id, [])
+        if logs_for_app:
+            request_start = request.args.get('start')
+            request_end = request.args.get('end')
+            logs_in_range = logs_for_app.search(int(request_start), int(request_end))
+            logs_in_range = [log.data for log in logs_in_range]
+        else:
+            logs_in_range = []
 
-        result_logs = []
-        for log in logs_in_range:
-            if log.data.get('app_id') == app_id:
-                data = log.data.copy()
-                del(data['app_id'])  # client doesn't care about the app_id because it's their app
-                result_logs.append(data)
-        return json.dumps({'logs': result_logs})
+        return json.dumps({'logs': logs_in_range})
 
     return app
 
